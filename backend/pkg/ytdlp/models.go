@@ -36,6 +36,19 @@ type SubtitleItem struct {
 	IsAuto   bool   `json:"is_auto"`
 }
 
+type SearchResultItem struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	URL            string `json:"url"`
+	Thumbnail      string `json:"thumbnail,omitempty"`
+	Duration       int64  `json:"duration,omitempty"`
+	DurationString string `json:"duration_string,omitempty"`
+	Uploader       string `json:"uploader,omitempty"`
+	Channel        string `json:"channel,omitempty"`
+	ViewCount      int64  `json:"view_count,omitempty"`
+	UploadDate     string `json:"upload_date,omitempty"`
+}
+
 type PlaylistEntry struct {
 	ID             string `json:"id"`
 	Title          string `json:"title"`

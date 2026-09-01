@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -34,8 +35,9 @@ func RegisterRoutes(app *fiber.App) {
 	api.Post("/system/yt-dlp/update", handleUpdateYtDlp)
 	api.Post("/system/yt-dlp/install", handleInstallYtDlp)
 
-	// Info / Metadata Extraction
+	// Info / Metadata Extraction & Search
 	api.Post("/info", handleExtractInfo)
+	api.Get("/search", handleSearch)
 
 	// Downloads Queue
 	api.Get("/downloads", handleGetDownloads)
@@ -145,6 +147,27 @@ func handleExtractInfo(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(meta)
+}
+
+func handleSearch(c *fiber.Ctx) error {
+	query := strings.TrimSpace(c.Query("q"))
+	if query == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "query parameter 'q' is required"})
+	}
+
+	limit := 15
+	if l := c.Query("limit"); l != "" {
+		if val, err := strconv.Atoi(l); err == nil && val > 0 {
+			limit = val
+		}
+	}
+
+	results, err := ytdlp.SearchYouTube(query, limit)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(results)
 }
 
 func handleGetDownloads(c *fiber.Ctx) error {

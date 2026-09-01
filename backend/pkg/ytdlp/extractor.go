@@ -312,3 +312,116 @@ func formatDuration(seconds int64) string {
 	}
 	return fmt.Sprintf("%02d:%02d", m, s)
 }
+
+func SearchYouTube(query string, limit int) ([]SearchResultItem, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	cfgMgr := config.GetManager()
+	cfg := cfgMgr.Get()
+
+	binaryPath, err := ResolveBinaryPath(cfg.YtDlpPath)
+	if err != nil {
+		return nil, fmt.Errorf("yt-dlp executable not found: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	args := []string{
+		fmt.Sprintf("ytsearch%d:%s", limit, query),
+		"--dump-json",
+		"--flat-playlist",
+		"--skip-download",
+		"--no-warnings",
+		"--ignore-errors",
+	}
+
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
+	HideWindow(cmd)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil && stdout.Len() == 0 {
+		return nil, fmt.Errorf("yt-dlp search error: %v, stderr: %s", err, stderr.String())
+	}
+
+	lines := strings.Split(stdout.String(), "\n")
+	results := make([]SearchResultItem, 0, len(lines))
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		var raw map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &raw); err != nil {
+			continue
+		}
+
+		id, _ := raw["id"].(string)
+		if id == "" {
+			if u, ok := raw["url"].(string); ok {
+				id = u
+			}
+		}
+		if id == "" {
+			continue
+		}
+
+		title, _ := raw["title"].(string)
+		if title == "" {
+			title = "Video senza titolo"
+		}
+
+		webpageURL, _ := raw["webpage_url"].(string)
+		if webpageURL == "" {
+			if strings.HasPrefix(id, "http") {
+				webpageURL = id
+			} else {
+				webpageURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", id)
+			}
+		}
+
+		duration := int64(parseInterfaceFloat(raw["duration"]))
+		durationStr, _ := raw["duration_string"].(string)
+		if durationStr == "" && duration > 0 {
+			durationStr = formatDuration(duration)
+		}
+
+		thumbnail, _ := raw["thumbnail"].(string)
+		if thumbnail == "" && !strings.HasPrefix(id, "http") {
+			thumbnail = fmt.Sprintf("https://i.ytimg.com/vi/%s/hqdefault.jpg", id)
+		}
+
+		uploader, _ := raw["uploader"].(string)
+		channel, _ := raw["channel"].(string)
+		if channel == "" {
+			channel = uploader
+		}
+		if uploader == "" {
+			uploader = channel
+		}
+
+		viewCount := int64(parseInterfaceFloat(raw["view_count"]))
+		uploadDate, _ := raw["upload_date"].(string)
+
+		results = append(results, SearchResultItem{
+			ID:             id,
+			Title:          title,
+			URL:            webpageURL,
+			Thumbnail:      thumbnail,
+			Duration:       duration,
+			DurationString: durationStr,
+			Uploader:       uploader,
+			Channel:        channel,
+			ViewCount:      viewCount,
+			UploadDate:     uploadDate,
+		})
+	}
+
+	return results, nil
+}
