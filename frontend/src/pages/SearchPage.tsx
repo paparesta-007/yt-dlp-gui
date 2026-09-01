@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Search,
   Film,
@@ -16,30 +16,48 @@ import {
   History,
   AlertCircle,
   ExternalLink,
+  Copy,
+  Check,
+  Filter,
+  Plus,
+  Radio,
 } from 'lucide-react'
 import { SearchResultItem, DownloadOptions, Metadata } from '@/types'
 import { api } from '@/lib/api'
-import { formatNumber, formatDuration, formatBytes } from '@/lib/utils'
+import { formatNumber, formatDuration, formatBytes, extractYouTubeId } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
+import { Modal } from '@/components/ui/Modal'
 import { InspectModal } from '@/components/InspectModal'
 
 interface SearchPageProps {
   onStartDownload?: (options: DownloadOptions, meta?: Metadata) => void
 }
 
+type DurationFilter = 'all' | 'short' | 'medium' | 'long'
+
 export function SearchPage({ onStartDownload }: SearchPageProps) {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [results, setResults] = useState<SearchResultItem[]>([])
+  const [currentLimit, setCurrentLimit] = useState(12)
+  const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [recentSearches, setRecentSearches] = useState<string[]>([])
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [durationFilter, setDurationFilter] = useState<DurationFilter>('all')
+
+  // Preview Player Modal State
+  const [previewItem, setPreviewItem] = useState<SearchResultItem | null>(null)
 
   // Inspect Modal State
   const [inspectUrl, setInspectUrl] = useState('')
   const [isInspectOpen, setIsInspectOpen] = useState(false)
+
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     try {
@@ -50,12 +68,15 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
     }
   }, [])
 
-  const handleSearch = async (targetQuery?: string) => {
+  // Fast search with smaller initial limit (12) for lightning-fast response
+  const handleSearch = async (targetQuery?: string, limit = 12) => {
     const q = (targetQuery !== undefined ? targetQuery : query).trim()
     if (!q) return
 
     setLoading(true)
     setError(null)
+    setCurrentLimit(limit)
+    setHasMore(true)
 
     // Update recent searches
     const updated = [q, ...recentSearches.filter((s) => s.toLowerCase() !== q.toLowerCase())].slice(0, 8)
@@ -67,10 +88,13 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
     }
 
     try {
-      const items = await api.searchYouTube(q, 24)
+      const items = await api.searchYouTube(q, limit)
       setResults(items)
       if (items.length === 0) {
         setError('Nessun video trovato per questa ricerca.')
+        setHasMore(false)
+      } else if (items.length < limit) {
+        setHasMore(false)
       }
     } catch (err: any) {
       setError(err.message || 'Errore durante la ricerca su YouTube')
@@ -79,9 +103,49 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
     }
   }
 
+  // Load next batch progressively when scrolling down
+  const handleLoadMore = async () => {
+    if (loading || loadingMore || !query.trim() || !hasMore) return
+    const nextLimit = currentLimit + 12
+    setLoadingMore(true)
+    try {
+      const items = await api.searchYouTube(query.trim(), nextLimit)
+      if (items.length <= results.length) {
+        setHasMore(false)
+      } else {
+        setResults(items)
+        setCurrentLimit(nextLimit)
+        if (items.length < nextLimit || nextLimit >= 48) {
+          setHasMore(false)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load more results:', err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  // Auto load more with IntersectionObserver
+  useEffect(() => {
+    if (!loadMoreRef.current || !hasMore || loading || loadingMore || results.length === 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleLoadMore()
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    )
+
+    observer.observe(loadMoreRef.current)
+    return () => observer.disconnect()
+  }, [results.length, hasMore, loading, loadingMore, currentLimit, query])
+
   const quickSearch = (tag: string) => {
     setQuery(tag)
-    handleSearch(tag)
+    handleSearch(tag, 12)
   }
 
   const handleQuickDownload = (item: SearchResultItem, mode: 'video' | 'audio') => {
@@ -108,10 +172,28 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
     setIsInspectOpen(true)
   }
 
+  const copyUrl = (item: SearchResultItem) => {
+    navigator.clipboard.writeText(item.url)
+    setCopiedId(item.id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
   const clearRecent = () => {
     setRecentSearches([])
     localStorage.removeItem('yt_recent_searches')
   }
+
+  // Filter results by duration
+  const filteredResults = useMemo(() => {
+    if (durationFilter === 'all') return results
+    return results.filter((item) => {
+      const d = item.duration || 0
+      if (durationFilter === 'short') return d > 0 && d <= 300 // <= 5 min
+      if (durationFilter === 'medium') return d > 300 && d <= 1200 // 5 - 20 min
+      if (durationFilter === 'long') return d > 1200 // > 20 min
+      return true
+    })
+  }, [results, durationFilter])
 
   const popularTags = [
     'Lo-Fi Hip Hop Beats',
@@ -124,6 +206,8 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
     'Top Hits',
   ]
 
+  const previewYtId = previewItem ? extractYouTubeId(previewItem.url) || previewItem.id : null
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header & Search Bar */}
@@ -135,7 +219,7 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
               <span>Cerca su YouTube</span>
             </h1>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Cerca qualsiasi video, musica o playlist e scarica in 1 clic con bitrate massimo
+              Ricerca rapida con caricamento progressivo e riproduzione anteprima in 1 clic
             </p>
           </div>
         </div>
@@ -146,7 +230,7 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch(undefined, 12)}
               placeholder="Cerca canzoni, artisti, titoli, podcast o incolla link YouTube..."
               icon={<Search className="h-4 w-4 text-zinc-400" />}
               className="h-10 text-xs pl-9 pr-8 shadow-xs"
@@ -155,14 +239,14 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
           <Button
-            onClick={() => handleSearch()}
+            onClick={() => handleSearch(undefined, 12)}
             isLoading={loading}
             disabled={!query.trim()}
             className="h-10 px-5 font-semibold shrink-0 gap-1.5 shadow-xs"
@@ -218,6 +302,39 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
         )}
       </div>
 
+      {/* Filter Row if results exist */}
+      {results.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 text-zinc-400" />
+            <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 mr-1">Durata:</span>
+            {[
+              { id: 'all', label: 'Tutti' },
+              { id: 'short', label: 'Brevi (< 5m)' },
+              { id: 'medium', label: 'Medi (5-20m)' },
+              { id: 'long', label: 'Lunghi (> 20m)' },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setDurationFilter(f.id as any)}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors cursor-pointer ${
+                  durationFilter === f.id
+                    ? 'bg-zinc-900 text-zinc-50 border-zinc-900 dark:bg-zinc-50 dark:text-zinc-900 dark:border-zinc-50'
+                    : 'bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          <span className="text-[11px] text-zinc-500 font-medium">
+            Mostrati {filteredResults.length} di {results.length} video
+          </span>
+        </div>
+      )}
+
       {/* Error Alert */}
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 flex items-start gap-2.5 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
@@ -229,7 +346,7 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
         </div>
       )}
 
-      {/* Loading Skeletons */}
+      {/* Initial Loading Skeletons */}
       {loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -247,22 +364,20 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
       )}
 
       {/* Results Grid */}
-      {!loading && results.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-              Trovati {results.length} risultati su YouTube
-            </span>
-          </div>
-
+      {!loading && filteredResults.length > 0 && (
+        <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {results.map((item) => (
+            {filteredResults.map((item) => (
               <Card
                 key={item.id}
                 className="overflow-hidden flex flex-col justify-between border-zinc-200 hover:shadow-md transition-all group dark:border-zinc-800 dark:bg-zinc-950"
               >
-                {/* Thumbnail Header */}
-                <div className="relative aspect-video w-full overflow-hidden bg-zinc-900">
+                {/* Thumbnail Header with Clickable Preview Player */}
+                <div
+                  onClick={() => setPreviewItem(item)}
+                  className="relative aspect-video w-full overflow-hidden bg-zinc-900 cursor-pointer select-none"
+                  title="Clicca per guardare l'anteprima video"
+                >
                   {item.thumbnail ? (
                     <img
                       src={item.thumbnail}
@@ -275,6 +390,13 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
                     </div>
                   )}
 
+                  {/* Play Overlay on Hover */}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transform group-hover:scale-110 transition-transform">
+                      <Play className="h-4 w-4 fill-white ml-0.5" />
+                    </div>
+                  </div>
+
                   {item.duration_string && (
                     <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/85 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-white backdrop-blur-xs">
                       {item.duration_string}
@@ -283,18 +405,38 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
                 </div>
 
                 {/* Video Info Content */}
-                <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                <div className="p-3 flex-1 flex flex-col justify-between space-y-2.5">
                   <div className="space-y-1">
-                    <h3
-                      className="text-xs font-bold text-zinc-900 leading-snug line-clamp-2 dark:text-zinc-100"
-                      title={item.title}
-                    >
-                      {item.title}
-                    </h3>
+                    <div className="flex items-start justify-between gap-1.5">
+                      <h3
+                        onClick={() => setPreviewItem(item)}
+                        className="text-xs font-bold text-zinc-900 leading-snug line-clamp-2 hover:text-blue-600 dark:text-zinc-100 dark:hover:text-blue-400 cursor-pointer"
+                        title={item.title}
+                      >
+                        {item.title}
+                      </h3>
+
+                      {/* Copy link button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          copyUrl(item)
+                        }}
+                        className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shrink-0 p-0.5 rounded cursor-pointer"
+                        title="Copia link video"
+                      >
+                        {copiedId === item.id ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
                       {item.uploader && (
-                        <div className="flex items-center gap-1 max-w-[140px] truncate">
+                        <div className="flex items-center gap-1 max-w-[130px] truncate">
                           <User className="h-3 w-3 text-zinc-400 shrink-0" />
                           <span className="truncate">{item.uploader}</span>
                         </div>
@@ -348,6 +490,30 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
               </Card>
             ))}
           </div>
+
+          {/* Infinite scroll loader trigger / Load more button */}
+          <div ref={loadMoreRef} className="py-6 flex flex-col items-center justify-center">
+            {loadingMore ? (
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                <span>Caricamento altri video in corso...</span>
+              </div>
+            ) : hasMore ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadMore}
+                className="text-xs px-4 h-8 gap-1.5 shadow-xs"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Carica altri risultati</span>
+              </Button>
+            ) : (
+              <span className="text-[11px] text-zinc-400">
+                Tutti i video trovati per questa ricerca sono stati caricati
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -366,6 +532,91 @@ export function SearchPage({ onStartDownload }: SearchPageProps) {
             </p>
           </div>
         </div>
+      )}
+
+      {/* 🎬 Floating Full-size Video Player Preview Modal */}
+      {previewItem && (
+        <Modal
+          isOpen={!!previewItem}
+          onClose={() => setPreviewItem(null)}
+          title={
+            <div className="flex items-center gap-2 min-w-0 pr-4">
+              <Play className="h-4 w-4 text-red-600 fill-red-600 shrink-0" />
+              <span className="text-sm font-bold text-zinc-900 truncate dark:text-zinc-100 max-w-lg">
+                {previewItem.title}
+              </span>
+            </div>
+          }
+          maxWidth="4xl"
+          footer={
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 w-full">
+              <div className="flex items-center gap-2 text-xs text-zinc-500 truncate">
+                {previewItem.uploader && <span className="font-semibold text-zinc-700 dark:text-zinc-300">{previewItem.uploader}</span>}
+                {previewItem.duration_string && <span>• {previewItem.duration_string}</span>}
+                {previewItem.view_count && <span>• {formatNumber(previewItem.view_count)} visualizzazioni</span>}
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    handleQuickDownload(previewItem, 'video')
+                    setPreviewItem(null)
+                  }}
+                  className="gap-1 text-xs"
+                >
+                  <Film className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Scarica Video 1080p</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    handleQuickDownload(previewItem, 'audio')
+                    setPreviewItem(null)
+                  }}
+                  className="gap-1 text-xs"
+                >
+                  <Music className="h-3.5 w-3.5 text-purple-600" />
+                  <span>Scarica MP3</span>
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => {
+                    const it = previewItem
+                    setPreviewItem(null)
+                    handleOpenInspect(it)
+                  }}
+                  className="gap-1 text-xs font-semibold"
+                >
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>Personalizza / Taglia</span>
+                </Button>
+              </div>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            {/* Embedded Responsive YouTube Player */}
+            <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black shadow-lg">
+              {previewYtId ? (
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${previewYtId}?autoplay=1&rel=0`}
+                  title={previewItem.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-white text-xs">
+                  Impossibile caricare anteprima per questo elemento.
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Inspect Modal Instance */}
