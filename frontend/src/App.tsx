@@ -23,16 +23,15 @@ export function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('light')
 
   useEffect(() => {
-    // Check saved theme or default to light
     const saved = localStorage.getItem('yt_theme') as 'dark' | 'light' | null
     const initialTheme = saved || 'light'
     setTheme(initialTheme)
     if (initialTheme === 'dark') {
       document.documentElement.classList.add('dark')
-      document.documentElement.classList.remove('light')
+      document.body.classList.add('dark')
     } else {
       document.documentElement.classList.remove('dark')
-      document.documentElement.classList.add('light')
+      document.body.classList.remove('dark')
     }
 
     // Connect WebSocket
@@ -66,12 +65,12 @@ export function App() {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
     setTheme(nextTheme)
     localStorage.setItem('yt_theme', nextTheme)
-    if (nextTheme === 'light') {
-      document.documentElement.classList.remove('dark')
-      document.documentElement.classList.add('light')
-    } else {
-      document.documentElement.classList.remove('light')
+    if (nextTheme === 'dark') {
       document.documentElement.classList.add('dark')
+      document.body.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      document.body.classList.remove('dark')
     }
   }
 

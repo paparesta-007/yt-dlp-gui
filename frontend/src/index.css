@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -51,7 +53,7 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
@@ -62,7 +64,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.dark body {
+html.dark, html.dark body {
   background-color: #09090b;
   color: #f4f4f5;
 }
