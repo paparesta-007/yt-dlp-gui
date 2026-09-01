@@ -15,6 +15,7 @@ import {
   Sparkles,
   Download,
   Pencil,
+  Eye,
 } from 'lucide-react'
 import { Job, MediaFile } from '@/types'
 import { api } from '@/lib/api'
@@ -46,6 +47,7 @@ export function DownloadItem({
   const [showRenameModal, setShowRenameModal] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [renameLoading, setRenameLoading] = useState(false)
+  const [showImagePreview, setShowImagePreview] = useState(false)
 
   const isDownloading = job.status === 'downloading' || job.status === 'preparing'
   const isCompleted = job.status === 'completed'
@@ -136,6 +138,21 @@ export function DownloadItem({
               )}
               <span>{isAudio ? 'AUDIO' : 'VIDEO'}</span>
             </div>
+
+            {/* Thumbnail Zoom Button */}
+            {job.thumbnail && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowImagePreview(true)
+                }}
+                className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black cursor-pointer shadow-sm z-10"
+                title="Visualizza anteprima immagine a schermo intero"
+              >
+                <Eye className="h-3 w-3" />
+              </button>
+            )}
 
             {/* Duration */}
             {job.duration > 0 && (
@@ -459,6 +476,37 @@ export function DownloadItem({
           )}
         </div>
       </Modal>
+
+      {/* Full-size Image Preview Modal */}
+      {showImagePreview && job.thumbnail && (
+        <Modal
+          isOpen={showImagePreview}
+          onClose={() => setShowImagePreview(false)}
+          title={
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm font-bold truncate max-w-md">{job.title || 'Anteprima Immagine'}</span>
+            </div>
+          }
+          maxWidth="4xl"
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs text-zinc-500 font-mono truncate max-w-sm">{job.uploader || job.url}</span>
+              <Button variant="outline" size="sm" onClick={() => setShowImagePreview(false)}>
+                Chiudi
+              </Button>
+            </div>
+          }
+        >
+          <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-zinc-950/90 overflow-hidden">
+            <img
+              src={job.thumbnail}
+              alt={job.title}
+              className="max-h-[70vh] w-auto max-w-full rounded-lg object-contain shadow-2xl"
+            />
+          </div>
+        </Modal>
+      )}
     </>
   )
 }

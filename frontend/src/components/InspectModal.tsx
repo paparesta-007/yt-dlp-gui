@@ -32,6 +32,8 @@ import {
   ArrowRight,
   Shield,
   Sparkle,
+  Play,
+  RefreshCw,
 } from 'lucide-react'
 import {
   DownloadOptions,
@@ -49,6 +51,7 @@ import {
   estimateAudioSize,
   formatSecondsToTimestamp,
   parseTimeToSeconds,
+  extractYouTubeId,
 } from '@/lib/utils'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -106,6 +109,8 @@ export function InspectModal({
   const [sectionStart, setSectionStart] = useState('00:00:00')
   const [sectionEnd, setSectionEnd] = useState('')
   const [splitChapters, setSplitChapters] = useState(false)
+  const [addDateTimeToFilename, setAddDateTimeToFilename] = useState(false)
+  const [previewReloadKey, setPreviewReloadKey] = useState(0)
 
   // Subtitles
   const [subtitlesMode, setSubtitlesMode] = useState<'none' | 'embed' | 'separate'>('none')
@@ -218,6 +223,10 @@ export function InspectModal({
   }
 
   const duration = metadata?.duration || 0
+  const youtubeId = useMemo(
+    () => extractYouTubeId(url || metadata?.webpage_url || initialUrl),
+    [url, metadata, initialUrl]
+  )
 
   // Calculation of trimming start/end seconds
   const startSec = useMemo(() => parseTimeToSeconds(sectionStart) || 0, [sectionStart])
@@ -291,6 +300,7 @@ export function InspectModal({
       url: url.trim(),
       mode: effectiveMode,
       customFilename: customFilename.trim() || undefined,
+      addDateTimeToFilename,
       outputFolder: outputFolder || undefined,
       outputTemplate: outputTemplate || undefined,
       formatId: selectedFormatId || undefined,
@@ -639,7 +649,7 @@ export function InspectModal({
           </div>
         </div>
 
-        {/* Output Filename & Format Box */}
+        {/* Output Filename & Format Box with Date-Time Stamping */}
         <div className="rounded-lg border border-zinc-200 bg-white p-3 space-y-2 dark:border-zinc-800 dark:bg-zinc-950">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-zinc-900 flex items-center gap-1.5 dark:text-zinc-100">
@@ -656,6 +666,16 @@ export function InspectModal({
             placeholder="Nome del file su disco (es: IlMioVideo)..."
             className="h-8 text-xs font-medium"
           />
+          <div className="flex items-center justify-between pt-1 border-t border-zinc-100 dark:border-zinc-800/80">
+            <div className="flex items-center gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-400">
+              <Calendar className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+              <span>Aggiungi Data e Ora nel nome file (YYYY-MM-DD_HH-mm-ss)</span>
+            </div>
+            <Switch
+              checked={addDateTimeToFilename}
+              onChange={setAddDateTimeToFilename}
+            />
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -868,6 +888,38 @@ export function InspectModal({
                     <span>Clip Audio</span>
                   </button>
                 </div>
+
+                {/* Interactive Player Preview for Trimming */}
+                {youtubeId && (
+                  <div className="rounded-xl overflow-hidden border border-zinc-200 bg-zinc-950 text-white shadow-xs dark:border-zinc-800">
+                    <div className="flex items-center justify-between px-3 py-2 bg-zinc-900 text-zinc-200 text-xs font-semibold border-b border-zinc-800">
+                      <span className="flex items-center gap-2">
+                        <Play className="h-3.5 w-3.5 text-red-500 fill-red-500" />
+                        <span>Anteprima Video Spezzone (Da {sectionStart} a {sectionEnd || 'Fine'})</span>
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPreviewReloadKey((k) => k + 1)}
+                        className="h-6 text-[10px] px-2 text-zinc-300 hover:text-white hover:bg-zinc-800 gap-1"
+                        title="Ricarica l'anteprima sincronizzata"
+                      >
+                        <RefreshCw className="h-2.5 w-2.5" />
+                        <span>Ricarica Preview</span>
+                      </Button>
+                    </div>
+                    <div className="relative aspect-video w-full bg-black">
+                      <iframe
+                        key={`${youtubeId}_${startSec}_${endSec}_${previewReloadKey}`}
+                        src={`https://www.youtube-nocookie.com/embed/${youtubeId}?start=${Math.floor(startSec)}&end=${Math.floor(endSec > 0 ? endSec : duration || 0)}&autoplay=0&rel=0`}
+                        title="Anteprima Video YouTube"
+                        className="w-full h-full border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Box Selezione Timestamp Inizio e Fine */}
                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 space-y-4 dark:border-zinc-800 dark:bg-zinc-900/40">

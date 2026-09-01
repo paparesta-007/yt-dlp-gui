@@ -100,7 +100,7 @@ export function parseTimeToSeconds(input?: string): number | null {
   return null
 }
 
-export function extractYouTubeId(url: string): string | null {
+export function extractYouTubeId(url?: string): string | null {
   if (!url) return null
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|shorts\/|watch\?v=|&v=)([^#&?]*).*/
   const match = url.match(regExp)

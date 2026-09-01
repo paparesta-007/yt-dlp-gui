@@ -313,6 +313,114 @@ function transformRawMetadata(raw: any): Metadata {
   return meta
 }
 
+export interface SearchResultItem {
+  id: string
+  title: string
+  url: string
+  thumbnail?: string
+  duration?: number
+  duration_string?: string
+  uploader?: string
+  channel?: string
+  view_count?: number
+  upload_date?: string
+}
+
+// In-memory query cache for 10 minutes to prevent YouTube rate limits
+const searchCache = new Map<string, { timestamp: number; results: SearchResultItem[] }>()
+
+export function searchYouTube(query: string, limit = 20): Promise<SearchResultItem[]> {
+  const cleanQ = query.trim().toLowerCase()
+  const cacheKey = `${cleanQ}_${limit}`
+  const cached = searchCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < 10 * 60 * 1000) {
+    return Promise.resolve(cached.results)
+  }
+
+  return new Promise((resolve, reject) => {
+    const cfg = configManager.get()
+    const binaryPath = resolveYtDlpPath(cfg.ytDlpPath)
+    if (!binaryPath) {
+      return reject(new Error('yt-dlp executable not found'))
+    }
+
+    const args = [
+      `ytsearch${limit}:${query}`,
+      '--dump-json',
+      '--flat-playlist',
+      '--skip-download',
+      '--no-warnings',
+      '--ignore-errors',
+    ]
+
+    const child = spawn(binaryPath, args, { windowsHide: true })
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (d) => {
+      stdout += d.toString()
+    })
+    child.stderr.on('data', (d) => {
+      stderr += d.toString()
+    })
+
+    const timeout = setTimeout(() => {
+      child.kill()
+      reject(new Error('Search timed out after 30 seconds'))
+    }, 30000)
+
+    child.on('close', () => {
+      clearTimeout(timeout)
+      const lines = stdout.split('\n').filter((l) => l.trim().length > 0)
+      const items: SearchResultItem[] = []
+
+      for (const line of lines) {
+        try {
+          const raw = JSON.parse(line)
+          const id = raw.id || raw.url || ''
+          if (!id) continue
+
+          const duration = raw.duration || 0
+          let thumbnail =
+            raw.thumbnail ||
+            (raw.thumbnails && raw.thumbnails.length > 0
+              ? raw.thumbnails[raw.thumbnails.length - 1].url
+              : '')
+          if (!thumbnail && id && !id.startsWith('http')) {
+            thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
+          }
+
+          items.push({
+            id,
+            title: raw.title || 'Video senza titolo',
+            url:
+              raw.webpage_url ||
+              raw.url ||
+              (id.startsWith('http') ? id : `https://www.youtube.com/watch?v=${id}`),
+            thumbnail,
+            duration,
+            duration_string: raw.duration_string || (duration > 0 ? formatDuration(duration) : ''),
+            uploader: raw.uploader || raw.channel || '',
+            channel: raw.channel || raw.uploader || '',
+            view_count: raw.view_count,
+            upload_date: raw.upload_date,
+          })
+        } catch {
+          // ignore corrupted lines
+        }
+      }
+
+      searchCache.set(cacheKey, { timestamp: Date.now(), results: items })
+      resolve(items)
+    })
+
+    child.on('error', (err) => {
+      clearTimeout(timeout)
+      reject(err)
+    })
+  })
+}
+
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)

@@ -12,6 +12,7 @@ export interface DownloadOptions {
   url: string
   mode: 'video' | 'audio' | 'custom'
   customFilename?: string
+  addDateTimeToFilename?: boolean
   outputFolder?: string
   outputTemplate?: string
   formatId?: string
@@ -246,4 +247,17 @@ export type WSEventType =
 export interface WSMessage<T = any> {
   type: WSEventType
   payload: T
+}
+
+export interface SearchResultItem {
+  id: string
+  title: string
+  url: string
+  thumbnail?: string
+  duration?: number
+  duration_string?: string
+  uploader?: string
+  channel?: string
+  view_count?: number
+  upload_date?: string
 }

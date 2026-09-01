@@ -12,11 +12,13 @@ import { wsClient } from '@/lib/ws'
 import { Header } from '@/components/Header'
 import { Sidebar } from '@/components/Sidebar'
 import { BackendGuard } from '@/components/BackendGuard'
+import { SearchPage } from '@/pages/SearchPage'
 import { DownloadsPage } from '@/pages/DownloadsPage'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { PresetsPage } from '@/pages/PresetsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { cn } from '@/lib/utils'
+import { Search } from 'lucide-react'
 
 export function App() {
   const [jobs, setJobs] = useState<Job[]>([])
@@ -81,6 +83,7 @@ export function App() {
 
   const mobileNav = [
     { to: '/', label: 'Downloads', icon: DownloadCloud, badge: activeCount > 0 ? activeCount : undefined },
+    { to: '/search', label: 'Cerca', icon: Search },
     { to: '/library', label: 'Libreria', icon: FolderKanban, badge: completedCount > 0 ? completedCount : undefined },
     { to: '/presets', label: 'Preset', icon: Sliders },
     { to: '/settings', label: 'Impostazioni', icon: SettingsIcon },
@@ -106,6 +109,7 @@ export function App() {
             <div className="mx-auto max-w-6xl">
               <Routes>
                 <Route path="/" element={<DownloadsPage />} />
+                <Route path="/search" element={<SearchPage />} />
                 <Route path="/library" element={<LibraryPage />} />
                 <Route path="/presets" element={<PresetsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />

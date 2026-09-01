@@ -47,7 +47,7 @@ export const api = {
       method: 'POST',
     }),
 
-  // Info Extraction
+  // Info & Search Extraction
   extractInfo: (params: {
     url: string
     cookiesBrowser?: string
@@ -60,6 +60,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(params),
     }),
+  searchYouTube: (query: string, limit = 20) =>
+    request<import('@/types').SearchResultItem[]>(
+      `/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    ),
 
   // Downloads Queue
   getDownloads: () => request<Job[]>('/downloads'),

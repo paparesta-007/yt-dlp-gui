@@ -6,6 +6,7 @@ export interface DownloadOptions {
   url: string
   mode: 'video' | 'audio' | 'custom'
   customFilename?: string
+  addDateTimeToFilename?: boolean
   outputFolder?: string
   outputTemplate?: string
   formatId?: string
@@ -140,8 +141,14 @@ export function buildArguments(opts: DownloadOptions, cfg: Config): string[] {
     let clean = opts.customFilename.trim().replace(/[<>:"/\\|?*]/g, '_')
     clean = clean.replace(/\.(mp4|mkv|webm|mp3|m4a|flac|opus|wav|aac|ogg|mov|ts|m4v)$/i, '').trim()
     if (clean) {
-      outputTemplate = `${clean}.%(ext)s`
+      if (opts.addDateTimeToFilename) {
+        outputTemplate = `${clean}_%(epoch>%Y-%m-%d_%H-%M-%S)s.%(ext)s`
+      } else {
+        outputTemplate = `${clean}.%(ext)s`
+      }
     }
+  } else if (opts.addDateTimeToFilename) {
+    outputTemplate = '%(title)s_%(epoch>%Y-%m-%d_%H-%M-%S)s.%(ext)s'
   }
 
   const fullPattern = path.join(outputFolder, outputTemplate)

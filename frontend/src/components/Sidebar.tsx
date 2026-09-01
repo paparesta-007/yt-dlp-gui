@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router'
 import {
   DownloadCloud,
+  Search,
   FolderKanban,
   Sliders,
   Settings as SettingsIcon,
@@ -24,20 +25,25 @@ export function Sidebar({ activeCount, completedCount }: SidebarProps) {
       badgeColor: 'bg-blue-600 text-white',
     },
     {
+      to: '/search',
+      label: 'Cerca YouTube',
+      icon: Search,
+    },
+    {
       to: '/library',
-      label: 'Library',
+      label: 'Libreria',
       icon: FolderKanban,
       badge: completedCount > 0 ? completedCount : undefined,
       badgeColor: 'bg-zinc-800 text-zinc-300',
     },
     {
       to: '/presets',
-      label: 'Presets',
+      label: 'Preset',
       icon: Sliders,
     },
     {
       to: '/settings',
-      label: 'Settings',
+      label: 'Impostazioni',
       icon: SettingsIcon,
     },
   ]

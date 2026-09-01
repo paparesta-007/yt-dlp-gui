@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url'
 import { configManager } from './config.js'
 import { detectYtDlp, installLatestYtDlp, updateYtDlp } from './ytdlp.js'
 import { detectFFmpeg } from './ffmpeg.js'
-import { extractMetadata } from './extractor.js'
+import { extractMetadata, searchYouTube } from './extractor.js'
 import { downloadManager } from './manager.js'
 import { storageManager } from './storage.js'
 import { scanLibrary, openInExplorer } from './system.js'
@@ -145,6 +145,23 @@ server.post<{ Body: InfoBody }>('/api/info', async (req, reply) => {
   } catch (err: any) {
     reply.status(500)
     return { error: err.message || 'Failed to inspect metadata' }
+  }
+})
+
+// YouTube Search Endpoint (Fast with In-memory Cache & Rate Limit Protection)
+server.get<{ Querystring: { q?: string; limit?: string } }>('/api/search', async (req, reply) => {
+  const query = req.query.q
+  if (!query || !query.trim()) {
+    reply.status(400)
+    return { error: 'query parameter "q" is required' }
+  }
+  const limit = parseInt(req.query.limit || '15', 10) || 15
+  try {
+    const results = await searchYouTube(query.trim(), Math.min(50, Math.max(1, limit)))
+    return results
+  } catch (err: any) {
+    reply.status(500)
+    return { error: err.message || 'YouTube search failed' }
   }
 })
 
