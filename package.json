@@ -1,0 +1,19 @@
+{
+  "name": "yt-dlp-gui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Unified yt-dlp GUI with React, Tailwind, shadcn/ui, React Router v7, and Node.js Fastify Backend",
+  "scripts": {
+    "dev": "concurrently -k -n \"frontend,backend\" -c \"cyan,green\" \"pnpm --filter frontend dev\" \"pnpm --filter backend dev\"",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "build:frontend": "pnpm --filter frontend build",
+    "build:backend": "pnpm --filter backend build",
+    "build": "pnpm run build:frontend && pnpm run build:backend",
+    "start": "pnpm --filter backend start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
